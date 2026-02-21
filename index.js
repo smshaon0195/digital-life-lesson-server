@@ -57,6 +57,14 @@ async function run() {
       res.send(result);
     });
 
+    // Filter API
+    app.get("/posts", async (req, res) => {
+      const email = req.query.email;
+      const query = email ? { email } : {};
+      const result = await postCollection.find(query).toArray();
+      res.send(result);
+    });
+
     // ✅ UPDATE POST (edit text)
     app.patch("/posts/:id", async (req, res) => {
       const { id } = req.params;
@@ -69,7 +77,12 @@ async function run() {
 
       res.send(result);
     });
-
+    // Get API
+    app.get("/posts/:id", async (req, res) => {
+      const { id } = req.params;
+      const post = await postCollection.findOne({ _id: new ObjectId(id) });
+      res.send(post); // ✅ এটা data return করবে
+    });
     // ✅ LIKE
     app.patch("/posts/like/:id", async (req, res) => {
       const { id } = req.params;
@@ -102,16 +115,22 @@ async function run() {
     // ✅ COMMENT
     app.patch("/posts/comment/:id", async (req, res) => {
       const { id } = req.params;
-      const { comment } = req.body;
+      const newComment = req.body; // frontend থেকে newComment object
 
-      const result = await postCollection.updateOne(
-        { _id: new ObjectId(id) },
-        { $push: { comments: comment } },
-      );
+      try {
+        // MongoDB তে push করা হচ্ছে wrapper "comment" এর ভিতরে
+        const updatedPost = await postCollection.findOneAndUpdate(
+          { _id: new ObjectId(id) },
+          { $push: { comments: { comment: newComment } } }, // wrapper
+          { returnDocument: "after" }, // updated document ফেরত দাও
+        );
 
-      res.send(result);
+        res.send(updatedPost.value); // full lesson object ফেরত
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ error: "Failed to add comment" });
+      }
     });
-
     console.log("✅ MongoDB Connected");
   } catch (err) {
     console.error(err);
