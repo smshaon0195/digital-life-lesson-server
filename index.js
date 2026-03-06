@@ -31,20 +31,79 @@ async function run() {
 
     const db = client.db("digital-life-lesson");
     const postCollection = db.collection("posts");
+    const userCollection = db.collection("users");
 
-    // ✅ CREATE POST
+    //  CREATE POST
     app.post("/posts", async (req, res) => {
       const post = {
         text: req.body.text,
         email: req.body.email || "test@gmail.com",
+        userName: req.body.userName || "Anonymous",
+        userPhoto: req.body.userPhoto || "",
         likes: 0,
         liked: false,
         favorite: false,
+        visibility: "public",
         comments: [],
         createdAt: new Date(),
+        postPhoto: req.body.postPhoto,
       };
 
       const result = await postCollection.insertOne(post);
+      res.send(result);
+    });
+    // user Profile Details API
+    app.put("/users", async (req, res) => {
+      const user = req.body;
+
+      const filter = { uid: user.uid };
+      const options = { upsert: true };
+      const userData = {
+        $set: {
+          phone: user.mobile,
+          gender: user.gender,
+          education: user.education,
+          language: user.language,
+          bio: user.about || "",
+        },
+      };
+      const result = await userCollection.updateOne(filter, userData, options);
+      res.send(result);
+    });
+    // ✅ USER GET POSTS
+    app.get("/users", async (req, res) => {
+      const result = await userCollection
+        .find({})
+        .sort({ createdAt: -1 })
+        .toArray();
+      res.send(result);
+    });
+
+    // All Post Show API
+    app.get("/posts", async (req, res) => {
+      try {
+        const { visibility } = req.query;
+
+        let query = {};
+
+        // যদি ?visibility=public পাঠানো হয়
+        if (visibility) {
+          query.visibility = visibility;
+        }
+
+        const result = await postCollection
+          .find(query)
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Failed to fetch posts" });
+      }
+    });
+    app.get("/users/:uid", async (req, res) => {
+      const { uid } = req.params;
+      const result = await userCollection.findOne({ uid });
       res.send(result);
     });
 
@@ -115,20 +174,75 @@ async function run() {
     // ✅ COMMENT
     app.patch("/posts/comment/:id", async (req, res) => {
       const { id } = req.params;
-      const newComment = req.body; // frontend থেকে newComment object
+      const newComment = req.body;
 
       try {
-        // MongoDB তে push করা হচ্ছে wrapper "comment" এর ভিতরে
         const updatedPost = await postCollection.findOneAndUpdate(
           { _id: new ObjectId(id) },
-          { $push: { comments: { comment: newComment } } }, // wrapper
-          { returnDocument: "after" }, // updated document ফেরত দাও
+          {
+            $push: {
+              comments: {
+                $each: [{ comment: newComment }],
+                $position: 0,
+              },
+            },
+          },
+          { returnDocument: "after" },
         );
 
-        res.send(updatedPost.value); // full lesson object ফেরত
+        res.send(updatedPost.value);
       } catch (err) {
         console.error(err);
         res.status(500).send({ error: "Failed to add comment" });
+      }
+    });
+    // Comment Edite
+    app.patch("/posts/comment/edit/:id", async (req, res) => {
+      const { id } = req.params;
+      const { index, Text } = req.body;
+
+      try {
+        const updatedPost = await postCollection.findOneAndUpdate(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              [`comments.${index}.comment.Text`]: Text,
+              [`comments.${index}.comment.UpdatedAt`]: new Date(),
+            },
+          },
+          { returnDocument: "after" },
+        );
+
+        res.send(updatedPost.value);
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ error: "Failed to edit comment" });
+      }
+    });
+    // Delete Comment
+    app.patch("/posts/comment/delete/:id", async (req, res) => {
+      const { id } = req.params;
+      const { index } = req.body;
+
+      try {
+        const updatedPost = await postCollection.findOneAndUpdate(
+          { _id: new ObjectId(id) },
+          {
+            $unset: { [`comments.${index}`]: 1 },
+          },
+          { returnDocument: "after" },
+        );
+
+        // null clean-up
+        await postCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $pull: { comments: null } },
+        );
+
+        res.send(updatedPost.value);
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ error: "Failed to delete comment" });
       }
     });
     console.log("✅ MongoDB Connected");
