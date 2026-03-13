@@ -79,14 +79,29 @@ async function run() {
       res.send(result);
     });
 
-    // All Post Show API
+    app.get("/users/:uid", async (req, res) => {
+      const { uid } = req.params;
+      const result = await userCollection.findOne({ uid });
+      res.send(result);
+    });
+
+    // ✅ সব পোস্ট, নিজের পোস্ট এবং ফেভারিট পোস্ট দেখার জন্য একটি স্মার্ট API
     app.get("/posts", async (req, res) => {
       try {
-        const { visibility } = req.query;
-
+        const { email, favorite, visibility } = req.query;
         let query = {};
 
-        // যদি ?visibility=public পাঠানো হয়
+        // ১. যদি ইমেইল থাকে (নিজের পোস্ট দেখার জন্য)
+        if (email) {
+          query.email = email;
+        }
+        console.log(email);
+        // ২. যদি ফেভারিট ফিল্টার থাকে (ইমেইল ও ফেভারিট একসাথে)
+        if (favorite === "true") {
+          query.favorite = true;
+        }
+
+        // ৩. যদি ভিজিবিলিটি ফিল্টার থাকে
         if (visibility) {
           query.visibility = visibility;
         }
@@ -98,30 +113,8 @@ async function run() {
 
         res.send(result);
       } catch (error) {
-        res.status(500).send({ message: "Failed to fetch posts" });
+        res.status(500).send({ message: "Failed to fetch posts", error });
       }
-    });
-    app.get("/users/:uid", async (req, res) => {
-      const { uid } = req.params;
-      const result = await userCollection.findOne({ uid });
-      res.send(result);
-    });
-
-    // ✅ GET POSTS
-    app.get("/posts", async (req, res) => {
-      const result = await postCollection
-        .find({})
-        .sort({ createdAt: -1 })
-        .toArray();
-      res.send(result);
-    });
-
-    // Filter API
-    app.get("/posts", async (req, res) => {
-      const email = req.query.email;
-      const query = email ? { email } : {};
-      const result = await postCollection.find(query).toArray();
-      res.send(result);
     });
 
     // ✅ UPDATE POST (edit text)
@@ -136,6 +129,7 @@ async function run() {
 
       res.send(result);
     });
+
     // Get API
     app.get("/posts/:id", async (req, res) => {
       const { id } = req.params;
