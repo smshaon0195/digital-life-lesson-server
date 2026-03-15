@@ -129,7 +129,16 @@ async function run() {
 
       res.send(result);
     });
+    // Delte Post
+    app.delete("/posts/:id", async (req, res) => {
+      const { id } = req.params;
 
+      const result = await postCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+
+      res.send(result);
+    });
     // Get API
     app.get("/posts/:id", async (req, res) => {
       const { id } = req.params;
@@ -213,6 +222,7 @@ async function run() {
         res.status(500).send({ error: "Failed to edit comment" });
       }
     });
+
     // Delete Comment
     app.patch("/posts/comment/delete/:id", async (req, res) => {
       const { id } = req.params;
