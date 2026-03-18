@@ -37,9 +37,9 @@ async function run() {
     app.post("/posts", async (req, res) => {
       const post = {
         text: req.body.text,
-        email: req.body.email || "test@gmail.com",
-        userName: req.body.userName || "Anonymous",
-        userPhoto: req.body.userPhoto || "",
+        email: req.body.email ,
+        userName: req.body.userName ,
+        userPhoto: req.body.userPhoto ,
         likes: 0,
         liked: false,
         favorite: false,
@@ -47,6 +47,7 @@ async function run() {
         comments: [],
         createdAt: new Date(),
         postPhoto: req.body.postPhoto,
+        roll : "user"
       };
 
       const result = await postCollection.insertOne(post);
@@ -131,10 +132,8 @@ async function run() {
     });
     // Delte Post
     app.delete("/posts/:id", async (req, res) => {
-      const { id } = req.params;
-
       const result = await postCollection.deleteOne({
-        _id: new ObjectId(id),
+        _id: new ObjectId(req.params.id),
       });
 
       res.send(result);
