@@ -9,7 +9,30 @@ const port = process.env.PORT || 3000;
 // middleware
 app.use(cors());
 app.use(express.json());
+// Token VeryFy
+const verifyFBToken = (req, res, next) => {
+  const token = req.headers.authorization;
 
+  if (!token) {
+    return res.status(401).send({ message: "Unauthorized" });
+  }
+
+  // TODO: Firebase verify করা লাগবে
+  req.decoded = { email: "test@email.com" }; // temporary
+
+  next();
+};
+// Admin VeryFy
+const veryfyAdmin = async (req, res, next) => {
+  const email = req.decoded.email;
+
+  const user = await userCollection.findOne({ email });
+
+  if (user?.role !== "admin") {
+    return res.status(403).send({ message: "Admin Only" });
+  }
+  next();
+};
 // Mongo URI
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.th9fx3f.mongodb.net/?appName=Cluster0`;
 
@@ -22,7 +45,7 @@ const client = new MongoClient(uri, {
 });
 
 app.get("/", (req, res) => {
-  res.send("Server running ✅");
+  res.send("Server running ");
 });
 
 async function run() {
@@ -34,20 +57,19 @@ async function run() {
     const userCollection = db.collection("users");
 
     //  CREATE POST
-    app.post("/posts", async (req, res) => {
+    app.post("/posts", verifyFBToken, async (req, res) => {
       const post = {
         text: req.body.text,
-        email: req.body.email ,
-        userName: req.body.userName ,
-        userPhoto: req.body.userPhoto ,
+        email: req.body.email,
+        userName: req.body.userName,
+        userPhoto: req.body.userPhoto,
         likes: 0,
         liked: false,
-        favorite: false,
+        favorite: [],
         visibility: "public",
         comments: [],
         createdAt: new Date(),
         postPhoto: req.body.postPhoto,
-        roll : "user"
       };
 
       const result = await postCollection.insertOne(post);
@@ -59,6 +81,7 @@ async function run() {
 
       const filter = { uid: user.uid };
       const options = { upsert: true };
+
       const userData = {
         $set: {
           phone: user.mobile,
@@ -66,12 +89,16 @@ async function run() {
           education: user.education,
           language: user.language,
           bio: user.about || "",
+          role: "user",
+          userType: "basic",
         },
       };
       const result = await userCollection.updateOne(filter, userData, options);
       res.send(result);
     });
-    // ✅ USER GET POSTS
+    // user role API
+
+    //  USER GET POSTS
     app.get("/users", async (req, res) => {
       const result = await userCollection
         .find({})
@@ -85,24 +112,33 @@ async function run() {
       const result = await userCollection.findOne({ uid });
       res.send(result);
     });
-
-    // ✅ সব পোস্ট, নিজের পোস্ট এবং ফেভারিট পোস্ট দেখার জন্য একটি স্মার্ট API
-    app.get("/posts", async (req, res) => {
+    app.get("/users/:email/role", async (req, res) => {
+      const email = req.params.email;
+      const query = { email };
+      const user = await userCollection.findOne(query);
+      res.send({ role: user?.role || "user" });
+    });
+    // সব পোস্ট, নিজের পোস্ট এবং ফেভারিট পোস্ট দেখার জন্য একটি স্মার্ট API
+    app.get("/posts", verifyFBToken, async (req, res) => {
       try {
         const { email, favorite, visibility } = req.query;
+
         let query = {};
 
-        // ১. যদি ইমেইল থাকে (নিজের পোস্ট দেখার জন্য)
+        // 🔥 login user email (token থেকে)
+        const userEmail = req.decoded.email;
+
+        // ১. নিজের পোস্ট
         if (email) {
           query.email = email;
         }
-        console.log(email);
-        // ২. যদি ফেভারিট ফিল্টার থাকে (ইমেইল ও ফেভারিট একসাথে)
+
+        // ২. favorite পোস্ট (main fix)
         if (favorite === "true") {
-          query.favorite = true;
+          query.favorites = { $in: [userEmail] };
         }
 
-        // ৩. যদি ভিজিবিলিটি ফিল্টার থাকে
+        // ৩. visibility filter
         if (visibility) {
           query.visibility = visibility;
         }
@@ -118,7 +154,7 @@ async function run() {
       }
     });
 
-    // ✅ UPDATE POST (edit text)
+    //  UPDATE POST (edit text)
     app.patch("/posts/:id", async (req, res) => {
       const { id } = req.params;
       const { text } = req.body;
@@ -144,7 +180,7 @@ async function run() {
       const post = await postCollection.findOne({ _id: new ObjectId(id) });
       res.send(post); // ✅ এটা data return করবে
     });
-    // ✅ LIKE
+    // LIKE
     app.patch("/posts/like/:id", async (req, res) => {
       const { id } = req.params;
       const { liked } = req.body;
@@ -160,20 +196,39 @@ async function run() {
       res.send(result);
     });
 
-    // ✅ FAVORITE
+    //  FAVORITE
     app.patch("/posts/favorite/:id", async (req, res) => {
       const { id } = req.params;
-      const { favorite } = req.body;
+     
+      const { email } = req.body;
+
+      const post = await postCollection.findOne({
+        _id: new ObjectId(id),
+      });
+       
+      let updateDoc;
+
+      if (post.favorite.includes(email)) {
+        // remove
+        updateDoc = {
+          $pull: { favorite: email },
+        };
+      } else {
+        // add
+        updateDoc = {
+          $addToSet: { favorite: email },
+        };
+      }
 
       const result = await postCollection.updateOne(
         { _id: new ObjectId(id) },
-        { $set: { favorite } },
+        updateDoc,
       );
-
       res.send(result);
+
     });
 
-    // ✅ COMMENT
+    // COMMENT
     app.patch("/posts/comment/:id", async (req, res) => {
       const { id } = req.params;
       const newComment = req.body;
@@ -193,6 +248,8 @@ async function run() {
         );
 
         res.send(updatedPost.value);
+
+        console.log(updatedPost.value)
       } catch (err) {
         console.error(err);
         res.status(500).send({ error: "Failed to add comment" });
@@ -248,7 +305,7 @@ async function run() {
         res.status(500).send({ error: "Failed to delete comment" });
       }
     });
-    console.log("✅ MongoDB Connected");
+    console.log("MongoDB Connected");
   } catch (err) {
     console.error(err);
   }
@@ -257,5 +314,5 @@ async function run() {
 run();
 
 app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
+  console.log(`Server running on port ${port}`);
 });
