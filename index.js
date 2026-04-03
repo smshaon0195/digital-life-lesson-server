@@ -12,13 +12,12 @@ app.use(express.json());
 // Token VeryFy
 const verifyFBToken = (req, res, next) => {
   const token = req.headers.authorization;
-
   if (!token) {
     return res.status(401).send({ message: "Unauthorized" });
   }
 
   // TODO: Firebase verify করা লাগবে
-  req.decoded = { email: "test@email.com" }; // temporary
+  req.decoded = { email: "" }; // temporary
 
   next();
 };
@@ -55,6 +54,7 @@ async function run() {
     const db = client.db("digital-life-lesson");
     const postCollection = db.collection("posts");
     const userCollection = db.collection("users");
+    const userPaymentCollection = db.collection("payments");
 
     //  CREATE POST
     app.post("/posts", verifyFBToken, async (req, res) => {
@@ -75,6 +75,45 @@ async function run() {
       const result = await postCollection.insertOne(post);
       res.send(result);
     });
+    // Payment mathods
+    app.post("/payments", async (req, res) => {
+      const {
+        uid,
+        email,
+        planName,
+        price,
+        month,
+        total,
+        cardNumber,
+        name,
+        transactionId,
+      } = req.body;
+
+      if (!uid || !email) {
+        return res.status(400).send({ error: "UID or email missing" });
+      }
+
+      const planData = {
+        planName,
+        price,
+        month,
+        total,
+        cardLast4: cardNumber,
+        name,
+        createdAt: new Date(),
+        transactionId: transactionId || null,
+      };
+
+      // Update existing user document or create new one
+      const result = await userPaymentCollection.updateOne(
+        { uid, email }, // match user
+        { $set: { plan: planData } }, // set (replace) plan
+        { upsert: true }, // create if doesn't exist
+      );
+
+      res.send({ success: true, result });
+    });
+
     // user Profile Details API
     app.put("/users", async (req, res) => {
       const user = req.body;
@@ -90,7 +129,6 @@ async function run() {
           language: user.language,
           bio: user.about || "",
           role: "user",
-          userType: "basic",
         },
       };
       const result = await userCollection.updateOne(filter, userData, options);
@@ -199,13 +237,13 @@ async function run() {
     //  FAVORITE
     app.patch("/posts/favorite/:id", async (req, res) => {
       const { id } = req.params;
-     
+
       const { email } = req.body;
 
       const post = await postCollection.findOne({
         _id: new ObjectId(id),
       });
-       
+
       let updateDoc;
 
       if (post.favorite.includes(email)) {
@@ -225,7 +263,6 @@ async function run() {
         updateDoc,
       );
       res.send(result);
-
     });
 
     // COMMENT
@@ -249,7 +286,7 @@ async function run() {
 
         res.send(updatedPost.value);
 
-        console.log(updatedPost.value)
+        console.log(updatedPost.value);
       } catch (err) {
         console.error(err);
         res.status(500).send({ error: "Failed to add comment" });
