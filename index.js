@@ -114,6 +114,18 @@ async function run() {
       res.send({ success: true, result });
     });
 
+    app.get("/payments", async (req, res) => {
+      const email = req.query.email;
+
+      if (!email) {
+        return res.status(400).send({ error: "Email required" });
+      }
+
+      const result = await userPaymentCollection.findOne({ email });
+
+      res.send(result);
+    });
+
     // user Profile Details API
     app.put("/users", async (req, res) => {
       const user = req.body;
