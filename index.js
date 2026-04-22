@@ -7,7 +7,15 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://digital-life-lesson-client-one.vercel.app",
+    ],
+    credentials: true,
+  }),
+);
 app.use(express.json());
 // Token VeryFy
 const verifyFBToken = (req, res, next) => {
